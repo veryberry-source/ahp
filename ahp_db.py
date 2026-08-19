@@ -118,7 +118,16 @@ def connect():
                 "Turso URL이 설정되어 있으나 libsql-client 패키지가 없습니다. "
                 "requirements.txt 에 libsql-client 를 추가하세요."
             )
-        client = libsql_client.create_client_sync(url=url, auth_token=token)
+        # libsql:// / wss:// 는 WebSocket 연결을 시도하다 일부 지역에서
+        # WSServerHandshakeError로 실패한다. https:// 로 바꿔 HTTP 전송을 쓴다.
+        u = url.strip()
+        if u.startswith("libsql://"):
+            u = "https://" + u[len("libsql://"):]
+        elif u.startswith("wss://"):
+            u = "https://" + u[len("wss://"):]
+        elif u.startswith("ws://"):
+            u = "http://" + u[len("ws://"):]
+        client = libsql_client.create_client_sync(url=u, auth_token=token)
         return _TursoConn(client)
     conn = sqlite3.connect(LOCAL_DB_PATH, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
