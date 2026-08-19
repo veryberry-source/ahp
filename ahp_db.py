@@ -78,23 +78,48 @@ def backend_name() -> str:
     return "Turso (클라우드)" if _secret("TURSO_DATABASE_URL") else f"로컬 SQLite ({LOCAL_DB_PATH})"
 
 
+class _TursoCursor:
+    """sqlite3 커서 호환: fetchall()만 제공."""
+    def __init__(self, rows):
+        self._rows = rows
+
+    def fetchall(self):
+        return [tuple(r) for r in self._rows]
+
+
+class _TursoConn:
+    """libsql-client(sync)를 sqlite3 conn처럼 감싼 어댑터.
+    conn.execute(sql, params) / conn.commit() / conn.close() 를 지원."""
+    def __init__(self, client):
+        self._c = client
+
+    def execute(self, sql, params=()):
+        rs = self._c.execute(sql, list(params) if params else [])
+        return _TursoCursor(getattr(rs, "rows", []))
+
+    def commit(self):
+        pass   # libsql-client는 execute마다 자동 커밋(HTTP)
+
+    def close(self):
+        try:
+            self._c.close()
+        except Exception:
+            pass
+
+
 def connect():
     url = _secret("TURSO_DATABASE_URL")
     token = _secret("TURSO_AUTH_TOKEN")
     if url:
         try:
-            import libsql_experimental as libsql  # type: ignore
-            return libsql.connect(database=url, auth_token=token)
-        except ImportError:
-            pass
-        try:
-            import libsql  # type: ignore
-            return libsql.connect(database=url, auth_token=token)
+            import libsql_client  # 순수 파이썬 (컴파일 불필요)
         except ImportError:
             raise RuntimeError(
-                "Turso URL이 설정되어 있으나 libsql 패키지가 없습니다. "
-                "`pip install libsql-experimental` 후 다시 실행하세요."
+                "Turso URL이 설정되어 있으나 libsql-client 패키지가 없습니다. "
+                "requirements.txt 에 libsql-client 를 추가하세요."
             )
+        client = libsql_client.create_client_sync(url=url, auth_token=token)
+        return _TursoConn(client)
     conn = sqlite3.connect(LOCAL_DB_PATH, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
