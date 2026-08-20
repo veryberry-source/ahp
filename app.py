@@ -394,9 +394,9 @@ def render_pair_step(sid, m, node, is_last=False):
                 if v == 0:
                     msg = "두 항목이 **동등하게** 중요"
                 elif v < 0:   # 왼쪽으로 → 왼쪽 항목(i) 우세
-                    msg = f"**{node['items'][i]} **{mag}배** 더 중요 ({VERBAL[mag]})"
+                    msg = f"**{node['items'][i]}**가 **{mag}배** 더 중요 ({VERBAL[mag]})"
                 else:         # 오른쪽으로 → 오른쪽 항목(j) 우세
-                    msg = f"**{node['items'][j]} **{mag}배** 더 중요 ({VERBAL[mag]})"
+                    msg = f"**{node['items'][j]}**가 **{mag}배** 더 중요 ({VERBAL[mag]})"
                 st.markdown(f'<div class="hint" style="text-align:center">{msg}</div>', unsafe_allow_html=True)
             st.divider()
 
