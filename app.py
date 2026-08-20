@@ -363,18 +363,6 @@ def render_pair_step(sid, m, node, is_last=False):
         st.caption("현재까지의 항목 가중치")
         st.altair_chart(hbar_weight_chart(node["items"], [float(x) for x in w]))
 
-        if n >= 3 and cons.cr > CR_LIMIT:
-            st.markdown("**일관성 개선 제안** — 아래 판단이 응답 전체와 가장 어긋납니다. 실제 생각과 다르지 않다면 그대로 두셔도 됩니다.")
-            for idx, s in enumerate(C.suggest_revisions(A, top_k=3, method=METHOD)):
-                col1, col2 = st.columns([5, 2])
-                col1.markdown(
-                    f'<div class="suggest-box"><b>{node["items"][s.i]}</b> ↔ <b>{node["items"][s.j]}</b> · '
-                    f'현재 {_fmt(s.current)}, {s.deviation:.1f}배 어긋남<br>'
-                    f'권장 <b>{_fmt(s.suggested)}</b> → CR {s.cr_before:.3f} → {s.cr_after:.3f}</div>',
-                    unsafe_allow_html=True)
-                col2.button("권장값 적용", key=f"fix::{sid}::{node['id']}::{idx}",
-                            on_click=_apply_fix, args=(sid, node["id"], s.i, s.j, s.suggested))
-
     # ---- 쌍대비교 슬라이더 ----
     store = ans_store(sid).get(node["id"], {})
     with st.container(border=True):
@@ -399,6 +387,20 @@ def render_pair_step(sid, m, node, is_last=False):
                     msg = f"**{node['items'][j]}**가 **{mag}배** 더 중요 ({VERBAL[mag]})"
                 st.markdown(f'<div class="hint" style="text-align:center">{msg}</div>', unsafe_allow_html=True)
             st.divider()
+
+    # ---- 일관성 개선 제안: 슬라이더 아래에 배치(응답 중 혼동 방지) ----
+    if n >= 3 and cons.cr > CR_LIMIT:
+        with st.container(border=True):
+            st.markdown("**일관성 개선 제안** — 아래 판단이 응답 전체와 가장 어긋납니다. 실제 생각과 다르지 않다면 그대로 두셔도 됩니다.")
+            for idx, s in enumerate(C.suggest_revisions(A, top_k=3, method=METHOD)):
+                col1, col2 = st.columns([5, 2])
+                col1.markdown(
+                    f'<div class="suggest-box"><b>{node["items"][s.i]}</b> ↔ <b>{node["items"][s.j]}</b> · '
+                    f'현재 {_fmt(s.current)}, {s.deviation:.1f}배 어긋남<br>'
+                    f'권장 <b>{_fmt(s.suggested)}</b> → CR {s.cr_before:.3f} → {s.cr_after:.3f}</div>',
+                    unsafe_allow_html=True)
+                col2.button("권장값 적용", key=f"fix::{sid}::{node['id']}::{idx}",
+                            on_click=_apply_fix, args=(sid, node["id"], s.i, s.j, s.suggested))
 
     b1, b2, _ = st.columns([1, 1, 4])
     if b1.button("이전", disabled=(st.session_state[f'step::{sid}'] <= 1), width='stretch'):
