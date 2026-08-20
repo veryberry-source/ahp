@@ -394,9 +394,9 @@ def render_pair_step(sid, m, node, is_last=False):
                 if v == 0:
                     msg = "두 항목이 **동등하게** 중요"
                 elif v < 0:   # 왼쪽으로 → 왼쪽 항목(i) 우세
-                    msg = f"**{node['items'][i]}**{mag}배** 더 중요 ({VERBAL[mag]})"
+                    msg = f"**{node['items'][i]} **{mag}배** 더 중요 ({VERBAL[mag]})"
                 else:         # 오른쪽으로 → 오른쪽 항목(j) 우세
-                    msg = f"**{node['items'][j]}**{mag}배** 더 중요 ({VERBAL[mag]})"
+                    msg = f"**{node['items'][j]} **{mag}배** 더 중요 ({VERBAL[mag]})"
                 st.markdown(f'<div class="hint" style="text-align:center">{msg}</div>', unsafe_allow_html=True)
             st.divider()
 
@@ -656,6 +656,46 @@ def _text_to_model(text, tfq):
 
 # ---- 결과 집계 ----
 
+def build_wide_df(m, comps, resp):
+    """응답자 1인 = 1행. 열 = 쌍대비교(GOAL_0_1 …) + 시급성(TF_분야 / TF_과제) + 응답자정보."""
+    nodes = comparison_nodes(m)
+    # 열 순서 정의
+    pair_cols = []
+    for nd in nodes:
+        for (i, j) in C.pair_indices(len(nd["items"])):
+            pair_cols.append(f"{nd['id']}_{i}_{j}")
+    tf_cat_cols = [f"TF_{c['id']}" for c in m["categories"]] if m.get("timeframe_question") else []
+    tf_item_cols = ([f"TF_{c['id']}I{k+1}" for c in m["categories"] for k in range(len(c["items"]))]
+                    if m.get("timeframe_question") else [])
+
+    # rid → 값
+    pv = {}
+    for c in comps:
+        pv.setdefault(c["rid"], {})[f"{c['node_id']}_{c['i']}_{c['j']}"] = c["value"]
+    meta_by = {r["rid"]: r for r in resp}
+
+    rows = []
+    for r in resp:
+        rid = r["rid"]
+        row = {"rid": rid, "응답자": r.get("respondent", ""),
+               "소속": (r.get("meta") or {}).get("org", ""), "제출시각": r.get("submitted_at", "")}
+        vals = pv.get(rid, {})
+        for col in pair_cols:
+            row[col] = vals.get(col, "")
+        tf = (r.get("meta") or {}).get("tf") or {}
+        for c in m["categories"]:
+            if m.get("timeframe_question"):
+                row[f"TF_{c['id']}"] = tf.get(c["id"], "")
+        for c in m["categories"]:
+            for k in range(len(c["items"])):
+                if m.get("timeframe_question"):
+                    row[f"TF_{c['id']}I{k+1}"] = tf.get(f"{c['id']}I{k+1}", "")
+        rows.append(row)
+
+    cols = ["rid", "응답자", "소속", "제출시각"] + pair_cols + tf_cat_cols + tf_item_cols
+    return pd.DataFrame(rows, columns=cols)
+
+
 def render_results():
     st.title("결과 집계")
     surveys = DB.list_surveys()
@@ -808,14 +848,27 @@ def render_results():
         tf_tab_idx = 4
 
     with tabs[tf_tab_idx]:
+        wide_df = build_wide_df(m, comps, resp)
+
+        st.markdown("##### 응답값 (wide) — 응답자 1인 = 1행")
+        st.caption("쌍대비교(GOAL_0_1 …)와 시급성(TF_C1=분야, TF_C1I1=과제)을 한 행에 모은 형식입니다.")
+        st.dataframe(wide_df, hide_index=True, width='stretch')
+        st.download_button("응답값 (wide) CSV 내려받기",
+                           wide_df.to_csv(index=False).encode("utf-8-sig"),
+                           file_name=f"ahp_wide_{sid}.csv", mime="text/csv",
+                           disabled=wide_df.empty)
+
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine="openpyxl") as xw:
+            wide_df.to_excel(xw, sheet_name="응답값_wide", index=False)
             leaf_df.to_excel(xw, sheet_name="전역가중치", index=False)
             cat_df.to_excel(xw, sheet_name="분야가중치", index=False)
             cr_df.to_excel(xw, sheet_name="일관성", index=False)
-            pd.DataFrame(comps).to_excel(xw, sheet_name="원자료", index=False)
-        st.download_button("결과 Excel 내려받기", buf.getvalue(), file_name=f"ahp_result_{sid}.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
+            pd.DataFrame(comps).to_excel(xw, sheet_name="원자료_long", index=False)
+        st.download_button("결과 Excel 내려받기 (wide 포함)", buf.getvalue(),
+                           file_name=f"ahp_result_{sid}.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           type="primary")
 
 
 def render_admin_preview():
